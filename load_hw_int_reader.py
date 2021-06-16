@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
+import matplotlib.pyplot as plt
 
 #load dataset (hand-writing integer)
 #28x28 numbers 0-9
@@ -16,5 +17,8 @@ hw_int_reader = tf.keras.models.load_model('hand_writing_int_reader.model')
 
 predictions = hw_int_reader.predict(x_test)
 predicted_int = np.argmax(predictions[0])
-
 print("predicted integer: ", predicted_int)
+
+plt.imshow(x_test[0], cmap=plt.cm.binary)
+plt.show()
+

@@ -21,9 +21,15 @@ y = pickle.load(pickle_in)
 X = X/255.0
 y=np.array(y)
 
-dense_layers = [0, 1, 2]
-layer_sizes = [32, 64, 128]
-conv_layers = [1, 2, 3]
+#for testing
+# dense_layers = [0, 1, 2]
+# layer_sizes = [32, 64, 128]
+# conv_layers = [1, 2, 3]
+
+#final
+dense_layers = [0]
+layer_sizes = [64]
+conv_layers = [3]
 
 for dense_layer in dense_layers:
     for layer_size in layer_sizes:
@@ -59,6 +65,7 @@ for dense_layer in dense_layers:
 
             model.fit(X, y, batch_size=32, epochs=10, validation_split=0.3, callbacks=[tensorboard])
 
+model.save('64x3-CNN_trial.model')
 #to monitor the training
 #paste this to the terminal with the working directory
 #tensorboard --logdir=logs/

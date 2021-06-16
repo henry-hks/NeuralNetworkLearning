@@ -2,7 +2,7 @@ import cv2
 import tensorflow as tf
 
 categories = ["Dog", "Cat"]
-filepath = 'dog2.jpg'
+filepath = 'cat.jpg'
 
 def prepare(filepath):
     img_size = 100
@@ -20,7 +20,7 @@ pic = cv2.imread(filepath)
 pic = cv2.resize(pic, (400,400))
 
 cv2.rectangle(pic, (0,0), (80,60), (255,255,255), -1)
-cv2.putText(pic, categories[int(prediction[0][0])], (10,40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 1)
+cv2.putText(pic, categories[int(prediction[0][0])], (10,40), cv2.FONT_HERSHEY_COMPLEX, 1, (0,0,0), 1)
 
 while 1:
     cv2.imshow("result", pic)
@@ -29,4 +29,3 @@ while 1:
         break
 
 cv2.destroyAllWindows()
-    
