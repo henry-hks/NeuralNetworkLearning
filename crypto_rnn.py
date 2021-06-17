@@ -1,172 +1,3 @@
-'''
-import pandas as pd
-from collections import deque
-import random
-import numpy as np
-from sklearn import preprocessing
-
-seq_len = 60 #how long of a preceeding sequence to collect for RNN
-period_predict = 3 #predict how far for the future
-ratio_to_predict = 'LTC-USD'
-
-def classify(current, future):
-    if float(future) > float(current):
-        return 1
-    else:
-        return 0
-
-def preprocess_df(df):
-    df = df.drop("future", 1) #drop future column
-
-    for col in df.columns:
-        if col != 'target': #normalize all except target
-            df[col] = df[col].pct_change()
-            df.dropna(inplace=True) # remove the nas created by pct_change()
-            df[col] = preprocessing.scale(df[col].values) # scale between 0-1
-
-    df.dropna(inplace=True) # clean the nas again
-
-    sequential_data = []
-    prev_days = deque(maxlen=seq_len)
-
-    for i in df.values:
-        prev_days.append([n for n in i[:-1]])
-        if len(prev_days) == seq_len:
-            sequential_data.append([np.array(prev_days), i[-1]])
-
-    random.shuffle(sequential_data)
-
-    buys = []
-    sells = []
-
-    for seq, target in sequential_data:
-        if target == 0:
-            sells.append([seq, target])
-        elif target == 1:
-            buys.append([seq, target])
-    
-    random.shuffle(buys)
-    random.shuffle(sells)
-
-    lower = min(len(buys), len(sells))
-
-    buys = buys[:lower]
-    sells = sells[:lower]
-
-    sequential_data = buys + sells
-    random.shuffle(sequential_data)
-
-    X = []
-    y = []
-
-    for seq, target in sequential_data:
-        X.append(seq)
-        y.append(target)
-    
-    return np.array(X), y
-
-# df = pd.read_csv("crypto_data/LTC-USD.csv", names=['time', 'low', 'high', 'open', 'close', 'volume'])
-
-main_df = pd.DataFrame() #begin empty
-
-ratios = ["BTC-USD", "LTC-USD", "BCH-USD", "ETH-USD"]
-for ratio in ratios:
-    print(ratio)
-    dataset = f'crypto_data/{ratio}.csv'
-    df = pd.read_csv(dataset, names=['time', 'low', 'high', 'open', 'close', 'volume'])
-
-    #rename volume and close to include the ticker
-    df.rename(columns={"close":f"{ratio}_close", "volume": f"{ratio}_volume"}, inplace=True)
-    
-    df.set_index("time", inplace=True)
-    df = df[[f"{ratio}_close", f"{ratio}_volume"]] #retrieve only close and volume
-
-    if len(main_df) == 0: #if dataframe is empty
-        main_df = df
-    else:
-        main_df = main_df.join(df)
-
-#if there is space in the data, use the previously known values
-main_df.fillna(method="ffill", inplace=True)
-main_df.dropna(inplace=True)
-
-main_df['future'] = main_df[f'{ratio_to_predict}_close'].shift(-period_predict)
-main_df['target'] = list(map(classify, main_df[f'{ratio_to_predict}_close'], main_df['future']))
-
-# print(main_df.head())
-
-times = sorted(main_df.index.values)
-last_5pct = sorted(main_df.index.values)[-int(0.05*len(times))]
-
-validation_main_df = main_df[(main_df.index >= last_5pct)]
-main_df = main_df[(main_df.index < last_5pct)] #now the main_df is all the data up to the last 5%
-
-train_x, train_y = preprocess_df(main_df)
-validation_x, validation_y = preprocess_df(validation_main_df)
-
-print(f"train data: {len(train_x)} validation: {len(validation_x)}")
-print(f"Dont buys: {train_y.count(0)}, buys: {train_y.count(1)}")
-print(f"VALIDATION Dont buys: {validation_y.count(0)}, buys: {validation_y.count(1)}")
-
-train_x = np.array(train_x)
-train_y = np.array(train_y)
-validation_x = np.array(validation_x)
-validation_y = np.array(validation_y)
-
-import time
-
-Epochs = 10
-batch_size = 64
-name = f"{seq_len}-SEQ={period_predict}-PRED-{int(time.time())}"
-
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
-from tensorflow.compat.v1.keras.layers import CuDNNLSTM
-from tensorflow.keras.callbacks import TensorBoard
-from tensorflow.keras.callbacks import ModelCheckpoint
-
-model = Sequential()
-model.add(CuDNNLSTM(128, input_shape=(train_x.shape[1:]), return_sequences=True))
-model.add(Dropout(0.2))
-model.add(BatchNormalization())
-
-model.add(CuDNNLSTM(128, return_sequences=True))
-model.add(Dropout(0.1))
-model.add(BatchNormalization())
-
-model.add(CuDNNLSTM(128))
-model.add(Dropout(0.2))
-model.add(BatchNormalization())
-
-model.add(Dense(32, activation='relu'))
-model.add(Dropout(0.2))
-
-model.add(Dense(2, activation='softmax'))
-
-opt = tf.keras.optimizers.Adam(lr=0.001, decay=1e-6)
-
-#compile
-model.compile(loss='sparse_categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
-
-tensorboard = TensorBoard(log_dir="logs/{}".format(name))
-
-filepath = "RNN_Final-{epoch:02d}-{val_accuracy:.3f}"  # unique file name that will include the epoch and the validation acc for that epoch
-checkpoint = ModelCheckpoint(filepath, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max') # saves only the best ones
-
-history = model.fit(train_x,train_y, batch_size=batch_size, epochs=Epochs, validation_data= (validation_x,validation_y), callbacks=[tensorboard, checkpoint])
-
-score = model.evaluate(validation_x,validation_y, verbose=0)
-print("Test Loss: ", score[0])
-print('Test Accuracy: ', score[1])
-
-model.save("models/{}".format(name))
-
-#paste this to the terminal with the working directory
-#tensorboard --logdir=logs/
-
-'''
-
 import pandas as pd
 from collections import deque
 import random
@@ -174,7 +5,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, LSTM, BatchNormalization
-from tensorflow.compat.v1.keras.layers import CuDNNLSTM
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.callbacks import ModelCheckpoint, ModelCheckpoint
 import time
@@ -184,8 +14,8 @@ SEQ_LEN = 60  # how long of a preceeding sequence to collect for RNN
 FUTURE_PERIOD_PREDICT = 3  # how far into the future are we trying to predict?
 RATIO_TO_PREDICT = "LTC-USD"
 EPOCHS = 10  # how many passes through our data
-BATCH_SIZE = 64  # how many batches? Try smaller batch if you're getting OOM (out of memory) errors.
-NAME = f"{SEQ_LEN}-SEQ-{FUTURE_PERIOD_PREDICT}-PRED-{int(time.time())}"
+BATCH_SIZE = 32  # how many batches? Try smaller batch if you're getting OOM (out of memory) errors.
+# NAME = f"{SEQ_LEN}-SEQ-{FUTURE_PERIOD_PREDICT}-PRED-{int(time.time())}"
 
 
 def classify(current, future):
@@ -254,8 +84,7 @@ for ratio in ratios:  # begin iteration
 
     ratio = ratio.split('.csv')[0]  # split away the ticker from the file-name
     print(ratio)
-    # dataset = f'training_datas/{ratio}.csv'  # get the full path to the file.
-    dataset = f'crypto_data/{ratio}.csv'
+    dataset = f'crypto_data/{ratio}.csv'  # get the full path to the file.
     df = pd.read_csv(dataset, names=['time', 'low', 'high', 'open', 'close', 'volume'])  # read in specific file
 
     # rename volume and close to include the ticker so we can still which close/volume is which:
@@ -297,51 +126,61 @@ train_y = np.array(train_y)
 validation_x = np.array(validation_x)
 validation_y = np.array(validation_y)
 
-model = Sequential()
-model.add(LSTM(128, input_shape=(train_x.shape[1:]), return_sequences=True))
-model.add(Dropout(0.2))
-model.add(BatchNormalization())
+lstm_layer_size = [16, 32, 64, 128]
+dense_layer_size = [8, 16, 32]
+dropout_perc = [0.2]
 
-model.add(LSTM(128, return_sequences=True))
-model.add(Dropout(0.1))
-model.add(BatchNormalization())
+for lstm_size in lstm_layer_size:
+    for dense_size in dense_layer_size:
+        for dpo in dropout_perc:
+            NAME = f"{lstm_size}-lstm-{dense_size}-dense-{dpo}-dropout-{int(time.time())}"
 
-model.add(LSTM(128))
-model.add(Dropout(0.2))
-model.add(BatchNormalization())
+            model = Sequential()
+            model.add(LSTM(lstm_size, input_shape=(train_x.shape[1:]), return_sequences=True))
+            model.add(Dropout(dpo))
+            model.add(BatchNormalization())
 
-model.add(Dense(32, activation='relu'))
-model.add(Dropout(0.2))
+            # model.add(LSTM(64, return_sequences=True))
+            # model.add(Dropout(0.3))
+            # model.add(BatchNormalization())
 
-model.add(Dense(2, activation='softmax'))
+            model.add(LSTM(lstm_size))
+            model.add(Dropout(dpo))
+            model.add(BatchNormalization())
 
+            model.add(Dense(dense_size, activation='relu'))
+            model.add(Dropout(dpo))
 
-opt = tf.keras.optimizers.Adam(lr=0.001, decay=1e-6)
+            model.add(Dense(2, activation='softmax'))
 
-# Compile model
-model.compile(
-    loss='sparse_categorical_crossentropy',
-    optimizer=opt,
-    metrics=['accuracy']
-)
+            opt = tf.keras.optimizers.Adam(lr=0.001, decay=1e-6)
 
-tensorboard = TensorBoard(log_dir="logs/{}".format(NAME))
+            # Compile model
+            model.compile(
+                loss='sparse_categorical_crossentropy',
+                optimizer=opt,
+                metrics=['accuracy']
+            )
 
-filepath = "RNN_Final-{epoch:02d}-{val_accuracy:.3f}"  # unique file name that will include the epoch and the validation acc for that epoch
-checkpoint = ModelCheckpoint(filepath, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max') # saves only the best ones
+            tensorboard = TensorBoard(log_dir="logs/{}".format(NAME))
 
-# Train model
-history = model.fit(
-    train_x, train_y,
-    batch_size=BATCH_SIZE,
-    epochs=EPOCHS,
-    validation_data=(validation_x, validation_y),
-    callbacks=[tensorboard, checkpoint]
-)
+            filepath = "RNN_Final-{epoch:02d}-{val_accuracy:.3f}"  # unique file name that will include the epoch and the validation acc for that epoch
+            checkpoint = ModelCheckpoint("models/{}.model".format(filepath, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max')) # saves only the best ones
 
-# Score model
-score = model.evaluate(validation_x, validation_y, verbose=0)
-print('Test loss:', score[0])
-print('Test accuracy:', score[1])
+            # Train model
+            history = model.fit(
+                train_x, train_y,
+                batch_size=BATCH_SIZE,
+                epochs=EPOCHS,
+                validation_data=(validation_x, validation_y),
+                callbacks=[tensorboard, checkpoint],
+            )
+
+            # Score model
+            score = model.evaluate(validation_x, validation_y, verbose=0)
+            print('Test loss:', score[0])
+            print('Test accuracy:', score[1])
 # Save model
 model.save("models/{}".format(NAME))
+
+# tensorboard --logdir=logs/
